@@ -1,0 +1,68 @@
+import requests
+import pandas as pd
+import schedule
+import time
+import warnings
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+
+# Suppress the InsecureRequestWarning
+warnings.simplefilter('ignore', InsecureRequestWarning)
+
+# Function to fetch data with pagination
+def fetch_paginated_data(url, params=None):
+    if params is None:
+        params = {}
+    collected_data = []
+
+    # Set up retry strategy
+    session = requests.Session()
+    retries = Retry(total=5, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+    session.mount('https://', HTTPAdapter(max_retries=retries))
+
+    while True:
+        response = session.get(url, params=params, verify=False, timeout=60)
+        if response.status_code == 200:
+            json_data = response.json()
+            if not json_data:
+                # No more data to fetch
+                break
+            collected_data.extend(json_data)
+            # Update the page parameter to get the next set of data
+            print(f"Fetched page {params.get('page', 1)}")  # Progress indication
+            params['page'] = params.get('page', 1) + 1
+        else:
+            raise Exception(f"Error: Unable to fetch data. Status code: {response.status_code}, Response content: {response.text}")
+
+    return collected_data
+
+# Convert JSON to Excel
+def json_to_excel(json_data, path):
+    df = pd.json_normalize(json_data)
+    df.to_excel(path, index=False)
+
+# Main function
+def main():
+    url = "https://kartoffel.branch-yesodot.org/api/entities"
+    params = {
+        'page': 1,
+        'pageSize': 1000,
+        'expanded': True
+    }
+
+    # Don't forget to add the updated from
+
+    path = r'C:\Users\Administrator\Desktop\output.xlsx'
+    
+    collected_data = fetch_paginated_data(url, params)
+    json_to_excel(collected_data, path)
+
+# Schedule the main function to run every hour
+schedule.every(1).hours.do(main)
+
+if __name__ == "__main__":
+    # Run the scheduled tasks
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
